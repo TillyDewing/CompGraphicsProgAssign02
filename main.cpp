@@ -1,152 +1,302 @@
-//Tilly Dewing - Computer Graphics Assignment 2 - 3/20/2023
-//Sam Houston State University - COSC 4332 - Dr. Islam
-
-#include<windows.h>
+#include <windows.h>
 #include <GL/glut.h>
+#include <stdlib.h>
 #include <math.h>
 #include <stdio.h>
 
-//Data structure for storing and transforming 2D points
-struct Vector2
+/*  Set initial display-window size. */
+GLsizei winWidth = 400, winHeight = 400;
+
+/*  Set range for world coordinates.  */
+GLfloat xwcMin = -250, xwcMax = 250;
+GLfloat ywcMin = -250, ywcMax = 250;
+
+int glWindows[4];
+
+class wcPt2D
 {
-    GLfloat x;
-    GLfloat y;
-    //Constructor
-    Vector2(GLfloat x1, GLfloat y1)
-    {
-        x = x1;
-        y = y1;
-    }
-
-    //Translate a point by x & y
-    void Translate(GLfloat x2, GLfloat y2)
-    {
-        x += x2;
-        y += y2;
-    }
-
-    //rotate point about 0,0 by theta degrees
-    void Rotate(GLfloat theta)
-    {
-        //get theta in radians
-        theta = theta * (M_PI / 180);
-        //create another struct to store temp values
-        Vector2 rotated = Vector2(x,y);
-        //Rotate point
-        rotated.x = x * cos(theta) - y * sin(theta);
-        rotated.y = x * sin(theta) + y * cos(theta);
-        //Set values
-        x = rotated.x;
-        y = rotated.y;
-        //return rotated;
-    }
+   public:
+      GLfloat x, y;
 };
 
+typedef GLfloat Matrix3x3 [3][3];
 
-//Color struct for generating pseudo random colors
-//Also not necessary but random colors were more fun.
-//Colors of shapes are randomized every draw call.
-struct Color
+Matrix3x3 matComposite;
+const GLdouble pi = 3.14159;
+
+void init (void)
 {
-    GLfloat r;
-    GLfloat g;
-    GLfloat b;
-
-    Color()
-    {
-        r = (float)rand()/(float)RAND_MAX;
-        g = (float)rand()/(float)RAND_MAX;
-        b = (float)rand()/(float)RAND_MAX;
-    }
-};
-
-//draw a n sided filled polygon
-//Param Defs:         | x & y pos to draw at  | # of sides  | radius of polygon
-void DrawFilledPolygon(GLint posX, GLint posY, int numSides, GLint scale)
-{
-    //Get random color and set it to draw color
-    Color randCol = Color();
-    glColor3f(randCol.r, randCol.g, randCol.b);
-
-    //Can draw a n sided polygon by rotating n points by 360/n degrees
-    float theta = -360.0f / numSides;
-    //Starting point before rotation.
-    Vector2 point = Vector2(0,1);//Arbitrary can be any point on a circle with radius 1, controls final polygon rotation
-
-    //Fill shape by drawing triangles fanning out from center(origin) of polygon
-    glBegin(GL_TRIANGLES); //Begin drawing triangles
-    for(int i = 1; i <= numSides; i++)
-    {
-        glVertex2f(posX,posY); //point 1 origin of polygon
-        point.Rotate(theta);
-        glVertex2f((point.x * scale) + posX, (point.y * scale) + posY);//point 2 1st rotation
-        point.Rotate(theta);
-        glVertex2f((point.x * scale) + posX, (point.y * scale) + posY);//point 3 2nd rotation
-        point.Rotate(-theta); //Rotate back once to avoid throwing of next triangle draw
-    }
-    glEnd();
+   /*  Set color of display window to white.  */
+   glClearColor (1.0, 1.0, 1.0, 0.0);
 }
 
-// Initialization function sets the background color, color for drawing, size of dots, and the projection matrix
-void init()
+/* Construct the 3 by 3 identity matrix. */
+void matrix3x3SetIdentity (Matrix3x3 matIdent3x3)
 {
-    glutSetWindowTitle("Computer Graphics Assign 1 : Tilly Dewing");
-    // Set the background color
-    glClearColor(0.5, 0.5, 0.55, 0.0);
+   GLint row, col;
 
-    // Set the orthographic projection matrix with the specified left, right, bottom, and top values
-    gluOrtho2D(-250, 250, -250, 250);
+   for (row = 0; row < 3; row++)
+      for (col = 0; col < 3; col++)
+         matIdent3x3 [row][col] = (row == col);
 }
 
-// Display function performs the actual drawing
-void display() {
-    // Clear the screen
-    glClear(GL_COLOR_BUFFER_BIT);
+/* Premultiply matrix m1 times matrix m2, store result in m2. */
+void matrix3x3PreMultiply (Matrix3x3 m1, Matrix3x3 m2)
+{
+   GLint row, col;
+   Matrix3x3 matTemp;
 
-    // Send all output to the screen
-    glFlush();
+   for (row = 0; row < 3; row++)
+      for (col = 0; col < 3 ; col++)
+         matTemp [row][col] = m1 [row][0] * m2 [0][col] + m1 [row][1] *
+                            m2 [1][col] + m1 [row][2] * m2 [2][col];
+
+   for (row = 0; row < 3; row++)
+      for (col = 0; col < 3; col++)
+         m2 [row][col] = matTemp [row][col];
 }
 
-void GetInput()
+void translate2D (GLfloat tx, GLfloat ty)
 {
-    printf("Enter the 4 points for the quad:\n");
-    Vector2 points[4];
+   Matrix3x3 matTransl;
+
+   /*  Initialize translation matrix to identity.  */
+   matrix3x3SetIdentity (matTransl);
+
+   matTransl [0][2] = tx;
+   matTransl [1][2] = ty;
+
+   /*  Concatenate matTransl with the composite matrix.  */
+   matrix3x3PreMultiply (matTransl, matComposite);
+}
+
+void rotate2D (wcPt2D pivotPt, GLfloat theta)
+{
+   Matrix3x3 matRot;
+
+   /*  Initialize rotation matrix to identity.  */
+   matrix3x3SetIdentity (matRot);
+
+   matRot [0][0] = cos (theta);
+   matRot [0][1] = -sin (theta);
+   matRot [0][2] = pivotPt.x * (1 - cos (theta)) +
+                        pivotPt.y * sin (theta);
+   matRot [1][0] = sin (theta);
+   matRot [1][1] = cos (theta);
+   matRot [1][2] = pivotPt.y * (1 - cos (theta)) -
+                        pivotPt.x * sin (theta);
+
+   /*  Concatenate matRot with the composite matrix.  */
+   matrix3x3PreMultiply (matRot, matComposite);
+}
+
+void scale2D (GLfloat sx, GLfloat sy, wcPt2D fixedPt)
+{
+   Matrix3x3 matScale;
+
+   /*  Initialize scaling matrix to identity.  */
+   matrix3x3SetIdentity (matScale);
+
+   matScale [0][0] = sx;
+   matScale [0][2] = (1 - sx) * fixedPt.x;
+   matScale [1][1] = sy;
+   matScale [1][2] = (1 - sy) * fixedPt.y;
+
+   /*  Concatenate matScale with the composite matrix.  */
+   matrix3x3PreMultiply (matScale, matComposite);
+}
+
+/* Using the composite matrix, calculate transformed coordinates. */
+void transformVerts2D (GLint nVerts, wcPt2D * verts)
+{
+   GLint k;
+   GLfloat temp;
+
+   for (k = 0; k < nVerts; k++) {
+      temp = matComposite [0][0] * verts [k].x + matComposite [0][1] *
+             verts [k].y + matComposite [0][2];
+      verts [k].y = matComposite [1][0] * verts [k].x + matComposite [1][1] *
+                  verts [k].y + matComposite [1][2];
+         verts [k].x = temp;
+   }
+}
+
+void Quad (wcPt2D *verts)
+{
+    GLint k;
+
+    glBegin (GL_QUADS);
+       for (k = 0; k < 4; k++)
+          glVertex2f (verts [k].x, verts [k].y);
+    glEnd ( );
+}
+
+wcPt2D verts [4];
+
+void GetUserInput()
+{
+    //wcPt2D verts[4] = {(1,0),(1,0),(1,0),(1,0)};
+    printf("Enter 4 points for a quad: x,y \n");
     for(int i = 0; i < 4; i++)
     {
-        printf("Point %i: x,y ", i);
-        scanf("%d,%d", &points[i].x, &points[i].y);
+        float x,y = 0;
+        scanf("%f,%f", &x, &y);
+        verts[i].x = x;
+        verts[i].y = y;
     }
 }
 
-// Main function
-int main(int argc, char** argv)
+void DrawAxis()
 {
+    glColor3f(0,0,0);
+    glBegin(GL_LINES);
+    //X axis
+    glVertex2f(xwcMin,0);
+    glVertex2f(xwcMax,0);
+    //Y axis
+    glVertex2f(0,ywcMin);
+    glVertex2f(0,ywcMax);
+    glEnd();
+}
+void display1(void) //rotate 45deg
+{
+    glutSetWindow(glWindows[0]);
+    glClear (GL_COLOR_BUFFER_BIT);
+    DrawAxis();
+    glColor3f (0.0, 0.0, 1.0);       //  Set initial fill color to blue.
+    Quad(verts);
 
-    GetInput();
-    // Initialize the GLUT toolkit
-    glutInit(&argc, argv);
+    glFlush();
+}
+void display2(void) //scale by 3,2
+{
+    glClear (GL_COLOR_BUFFER_BIT);
+    DrawAxis();
+    glColor3f (0.0, 0.0, 1.0);       //  Set initial fill color to blue.
 
-    // Set the display mode to single buffering, RGBA model
-    glutInitDisplayMode(GLUT_SINGLE | GLUT_RGB);
+    glFlush();
+}
+void display3(void) //scale a point by 2,3
+{
+    glClear (GL_COLOR_BUFFER_BIT);
+    DrawAxis();
+    glColor3f (0.0, 0.0, 1.0);       //  Set initial fill color to blue.
 
-    // Set the window size on the screen
-    glutInitWindowSize(500, 500);
+    glFlush();
+}
+void display4(void) //reflect across origin
+{
+    glClear (GL_COLOR_BUFFER_BIT);
+    DrawAxis();
+    glColor3f (0.0, 0.0, 1.0);       //  Set initial fill color to blue.
+    Quad(verts);
 
-    // Set the window position on the screen
-    glutInitWindowPosition(100, 500);
+    glFlush();
+}
+void display5(void) //sheer Shx = 2, relative to a reference line y = -1
+{
+    glClear (GL_COLOR_BUFFER_BIT);
+    DrawAxis();
+    glColor3f (0.0, 0.0, 1.0);       //  Set initial fill color to blue.
 
-    // Open the screen window
-    glutCreateWindow(argv[0]);
+    glFlush();
+}
+void displayFcn (void)
+{
+   /*  Define initial position for triangle.  */
+   GLint nVerts = 4;
+   //wcPt2D verts [3] = { {50.0, 25.0}, {150.0, 25.0}, {100.0, 100.0} };
 
-    // Call the initialization function
-    init();
+   /*  Calculate position of triangle centroid.  */
+   wcPt2D centroidPt;
 
-    // Point to the display function
-    glutDisplayFunc(display);
+   GLint k, xSum = 0, ySum = 0;
+   for (k = 0; k < nVerts;  k++) {
+      xSum += verts [k].x;
+      ySum += verts [k].y;
+   }
+   centroidPt.x = GLfloat (xSum) / GLfloat (nVerts);
+   centroidPt.y = GLfloat (ySum) / GLfloat (nVerts);
 
-    // Go into perpetual loop
-    glutMainLoop();
+   /*  Set geometric transformation parameters.  */
+   wcPt2D pivPt, fixedPt;
+   pivPt = centroidPt;
+   fixedPt = centroidPt;
 
-    // Return 0
-    return 0;
+   GLfloat tx = 0.0, ty = 100.0;
+   GLfloat sx = 0.5, sy = 0.5;
+   GLdouble theta = pi/2.0;
+
+   glClear (GL_COLOR_BUFFER_BIT);   //  Clear display window.
+
+   glColor3f (0.0, 0.0, 1.0);       //  Set initial fill color to blue.
+   Quad(verts);                //  Display blue triangle.
+
+   /*  Initialize composite matrix to identity.  */
+   matrix3x3SetIdentity (matComposite);
+
+   /*  Construct composite matrix for transformation sequence.  */
+    translate2D (tx, ty);
+   rotate2D (pivPt, theta);
+   scale2D (sx, sy, fixedPt);   //  First transformation: Scale.
+        //  Second transformation: Rotate
+         //  Final transformation: Translate.
+
+   /*  Apply composite matrix to triangle vertices.  */
+   transformVerts2D (nVerts, verts);
+
+   glColor3f (1.0, 0.0, 0.0);  // Set color for transformed triangle.
+   Quad(verts);           // Display red transformed triangle.
+
+   glFlush ( );
+}
+
+void winReshapeFcn (GLint newWidth, GLint newHeight)
+{
+    glMatrixMode (GL_PROJECTION);
+    glLoadIdentity ( );
+    gluOrtho2D (xwcMin, xwcMax, ywcMin, ywcMax);
+
+    glClear (GL_COLOR_BUFFER_BIT);
+}
+
+int main (int argc, char ** argv)
+{
+    GetUserInput();
+    glutInit (&argc, argv);
+    glutInitDisplayMode (GLUT_SINGLE | GLUT_RGB);
+    glutInitWindowSize (winWidth, winHeight);
+
+    glutInitWindowPosition (50, 50);
+    glutCreateWindow ("Transform 1");
+    init ( );
+    glutDisplayFunc (display1);
+    glutReshapeFunc (winReshapeFcn);
+
+    glutInitWindowPosition (450, 50);
+    glutCreateWindow ("Transform 2");
+    init ( );
+    glutDisplayFunc (display2);
+    glutReshapeFunc (winReshapeFcn);
+
+    glutInitWindowPosition (850, 50);
+    glutCreateWindow ("Transform 3");
+    init ( );
+    glutDisplayFunc (display3);
+    glutReshapeFunc (winReshapeFcn);
+
+    glutInitWindowPosition (50, 450);
+    glutCreateWindow ("Transform 4");
+    init ( );
+    glutDisplayFunc (display4);
+    glutReshapeFunc (winReshapeFcn);
+
+    glutInitWindowPosition (450, 450);
+    glutCreateWindow ("Transform 5");
+    init ( );
+    glutDisplayFunc (display5);
+    glutReshapeFunc (winReshapeFcn);
+
+
+    glutMainLoop ( );
 }
