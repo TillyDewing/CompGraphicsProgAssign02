@@ -160,7 +160,8 @@ void Quad (wcPt2D *verts) //Draw a filled quad
     glEnd ( );
 }
 
-wcPt2D preTranVerts [nVerts] = {{10.0,50.0}, {10.0,10.0}, {50.0,10.0}, {50.0,50.0}}; //Points of the quad prior to transformation
+//wcPt2D preTranVerts [nVerts] = {{10.0,50.0}, {10.0,10.0}, {50.0,10.0}, {50.0,50.0}}; //Points of the quad prior to transformation
+wcPt2D preTranVerts [nVerts];
 
 void GetUserInput() //Prompt user for points of quad.
 {
@@ -365,7 +366,7 @@ void winReshapeFcn (GLint newWidth, GLint newHeight)
 
 int main (int argc, char ** argv)
 {
-    //GetUserInput();
+    GetUserInput();
     glutInit (&argc, argv);
     glutInitDisplayMode (GLUT_SINGLE | GLUT_RGB);
     glutInitWindowSize (winWidth, winHeight);
