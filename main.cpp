@@ -1,3 +1,6 @@
+//Tilly Dewing - Computer Graphics Assignment 2 - 3/20/2023
+//Sam Houston State University - COSC 4332 - Dr. Islam
+
 #include <windows.h>
 #include <GL/glut.h>
 #include <stdlib.h>
